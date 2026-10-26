@@ -1,0 +1,11 @@
+# ClickHouse data (контейнеры монтируют сюда тома, если вы укажете локальные пути)
+ch-data-*/
+superset-data/
+
+# IDE и OS
+.idea/
+.vscode/
+.DS_Store
+*.log
+__pycache__/
+.env

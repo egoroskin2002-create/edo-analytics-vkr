@@ -1,0 +1,159 @@
+version: '3.8'
+
+services:
+  # --- КООРДИНАЦИЯ КЛАТЕРА (ZooKeeper) ---
+  zookeeper:
+    image: zookeeper:3.8
+    container_name: edo-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - edo-network
+
+  # --- БРОКЕР СООБЩЕНИЙ (Apache Kafka) ---
+  kafka:
+    image: bitnami/kafka:3.4
+    container_name: edo-kafka
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+    depends_on:
+      - zookeeper
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "127.0.0.1:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edo-network
+
+  # --- КЛАТЕР CLICKHOUSE (2 ШАРДА, 2 РЕПЛИКИ) ---
+  
+  # Шард 1 - Реплика 1
+  ch-shard1-replica1:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: edo-ch-shard1-replica1
+    ports:
+      - "8123:8123"  # HTTP порт
+      - "9000:9000"  # Native (TCP) порт
+    environment:
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=secure_click_pass
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    volumes:
+      - ch-data-1-1:/var/lib/clickhouse
+      - ./clickhouse/cluster-config.xml:/etc/clickhouse-server/config.d/cluster-config.xml
+      - ./clickhouse/macros-1-1.xml:/etc/clickhouse-server/config.d/macros.xml
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - edo-network
+
+  # Шард 1 - Реплика 2
+  ch-shard1-replica2:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: edo-ch-shard1-replica2
+    ports:
+      - "8124:8123"
+      - "9001:9000"
+    environment:
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=secure_click_pass
+    volumes:
+      - ch-data-1-2:/var/lib/clickhouse
+      - ./clickhouse/cluster-config.xml:/etc/clickhouse-server/config.d/cluster-config.xml
+      - ./clickhouse/macros-1-2.xml:/etc/clickhouse-server/config.d/macros.xml
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - edo-network
+
+  # Шард 2 - Реплика 1
+  ch-shard2-replica1:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: edo-ch-shard2-replica1
+    ports:
+      - "8125:8123"
+      - "9002:9000"
+    environment:
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=secure_click_pass
+    volumes:
+      - ch-data-2-1:/var/lib/clickhouse
+      - ./clickhouse/cluster-config.xml:/etc/clickhouse-server/config.d/cluster-config.xml
+      - ./clickhouse/macros-2-1.xml:/etc/clickhouse-server/config.d/macros.xml
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - edo-network
+
+  # Шард 2 - Реплика 2
+  ch-shard2-replica2:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: edo-ch-shard2-replica2
+    ports:
+      - "8126:8123"
+      - "9003:9000"
+    environment:
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=secure_click_pass
+    volumes:
+      - ch-data-2-2:/var/lib/clickhouse
+      - ./clickhouse/cluster-config.xml:/etc/clickhouse-server/config.d/cluster-config.xml
+      - ./clickhouse/macros-2-2.xml:/etc/clickhouse-server/config.d/macros.xml
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - edo-network
+
+  # --- ВИЗУАЛИЗАЦИЯ (Apache Superset) ---
+  superset:
+    image: apache/superset:latest
+    container_name: edo-superset
+    ports:
+      - "8088:8088"
+    environment:
+      - SUPERSET_SECRET_KEY=super_secret_key_for_vkr_12345
+    volumes:
+      - superset-data:/app/superset_home
+    user: "root"
+    depends_on:
+      ch-shard1-replica1:
+        condition: service_healthy
+    networks:
+      - edo-network
+
+volumes:
+  ch-data-1-1:
+  ch-data-1-2:
+  ch-data-2-1:
+  ch-data-2-2:
+  superset-data:
+
+networks:
+  edo-network:
+    driver: bridge
