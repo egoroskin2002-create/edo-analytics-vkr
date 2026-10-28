@@ -1,7 +1,7 @@
-  # --- БРОКЕР СООБЩЕНИЙ (Apache Kafka) ---
 version: '3.8'
 
 services:
+  # --- КООРДИНАЦИЯ КЛАТЕРА (ZooKeeper) ---
   zookeeper:
     image: zookeeper:3.8
     container_name: edo-zookeeper
@@ -25,7 +25,8 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_CREATE_TOPICS: "edo-documents:1:1" # Сразу автоматически создаст тестовый топик
+      KAFKA_LOG_DIRS: /kafka/kafka-logs
+
     depends_on:
       - zookeeper
     healthcheck:
@@ -33,6 +34,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - edo-network
+
+  # --- АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ТОПИКА KAFKA ---
+  kafka-init:
+    image: wurstmeister/kafka:latest
+    container_name: edo-kafka-init
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1; do
+          echo "Ожидание готовности Kafka..."
+          sleep 2
+        done
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic edo-documents --partitions 1 --replication-factor 1
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - edo-network
 
@@ -46,8 +65,8 @@ services:
       - "8123:8123"  # HTTP порт
       - "9000:9000"  # Native (TCP) порт
     environment:
-      - CLICKHOUSE_USER=admin
-      - CLICKHOUSE_PASSWORD=secure_click_pass
+      - CLICKHOUSE_USER=${CH_USER}
+      - CLICKHOUSE_PASSWORD=${CH_PASSWORD}
       - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
     volumes:
       - ch-data-1-1:/var/lib/clickhouse
@@ -76,8 +95,8 @@ services:
       - "8124:8123"
       - "9001:9000"
     environment:
-      - CLICKHOUSE_USER=admin
-      - CLICKHOUSE_PASSWORD=secure_click_pass
+      - CLICKHOUSE_USER=${CH_USER}
+      - CLICKHOUSE_PASSWORD=${CH_PASSWORD}
     volumes:
       - ch-data-1-2:/var/lib/clickhouse
       - ./clickhouse/cluster-config.xml:/etc/clickhouse-server/config.d/cluster-config.xml
@@ -86,6 +105,14 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - edo-network
 
@@ -97,8 +124,8 @@ services:
       - "8125:8123"
       - "9002:9000"
     environment:
-      - CLICKHOUSE_USER=admin
-      - CLICKHOUSE_PASSWORD=secure_click_pass
+      - CLICKHOUSE_USER=${CH_USER}
+      - CLICKHOUSE_PASSWORD=${CH_PASSWORD}
     volumes:
       - ch-data-2-1:/var/lib/clickhouse
       - ./clickhouse/cluster-config.xml:/etc/clickhouse-server/config.d/cluster-config.xml
@@ -107,6 +134,14 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - edo-network
 
@@ -118,8 +153,8 @@ services:
       - "8126:8123"
       - "9003:9000"
     environment:
-      - CLICKHOUSE_USER=admin
-      - CLICKHOUSE_PASSWORD=secure_click_pass
+      - CLICKHOUSE_USER=${CH_USER}
+      - CLICKHOUSE_PASSWORD=${CH_PASSWORD}
     volumes:
       - ch-data-2-2:/var/lib/clickhouse
       - ./clickhouse/cluster-config.xml:/etc/clickhouse-server/config.d/cluster-config.xml
@@ -128,16 +163,25 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - edo-network
 
+  # --- ВИЗУАЛИЗАЦИЯ (Apache Superset) ---
   superset:
     image: apache/superset:latest
     container_name: edo-superset
     ports:
       - "8088:8088"
     environment:
-      - SUPERSET_SECRET_KEY=super_secret_key_for_vkr_12345
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
     volumes:
       - superset-data:/app/superset_home
     user: "root"

@@ -1,0 +1,50 @@
+<clickhouse>
+    <remote_servers>
+        <!-- Имя нашего кластера -->
+        <edo_cluster>
+            <!-- Шард 1 -->
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>ch-shard1-replica1</host>
+                    <port>9000</port>
+                    <user>admin</user>
+                    <password from_env="CLICKHOUSE_PASSWORD"/>
+                </replica>
+                <replica>
+                    <host>ch-shard1-replica2</host>
+                    <port>9000</port>
+                    <user>admin</user>
+                    <password from_env="CLICKHOUSE_PASSWORD"/>
+                </replica>
+            </shard>
+            <!-- Шард 2 -->
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>ch-shard2-replica1</host>
+                    <port>9000</port>
+                    <user>admin</user>
+                    <password from_env="CLICKHOUSE_PASSWORD"/>
+                </replica>
+                <replica>
+                    <host>ch-shard2-replica2</host>
+                    <port>9000</port>
+                    <user>admin</user>
+                    <password from_env="CLICKHOUSE_PASSWORD"/>
+                </replica>
+            </shard>
+        </edo_cluster>
+    </remote_servers>
+
+    <!-- Подключение к ZooKeeper -->
+    <zookeeper>
+        <node>
+            <host>zookeeper</host>
+            <port>2181</port>
+        </node>
+    </zookeeper>
+
+    <!-- Для внешних портов -->
+    <listen_host>::</listen_host>
+</clickhouse>
