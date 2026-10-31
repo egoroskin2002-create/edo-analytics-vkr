@@ -11,3 +11,7 @@ __pycache__/
 .env
 # Python virtual environment
 .venv/
+
+# Generated JSONL datasets
+data/jsonl/
+scripts/*.bak
