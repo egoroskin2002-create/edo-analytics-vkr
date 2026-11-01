@@ -1,0 +1,10 @@
+FROM apache/superset:6.1.0
+
+USER root
+
+COPY requirements-superset.txt /app/requirements-superset.txt
+
+RUN /app/.venv/bin/python -m ensurepip --upgrade \
+    && /app/.venv/bin/python -m pip install --no-cache-dir -r /app/requirements-superset.txt
+
+USER superset
